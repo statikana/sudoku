@@ -9,7 +9,7 @@ class Sudoku:
         self.box_width: int = 3
 
     def is_solved(self):
-        return all(len(row != 0) == len(row) for row in self)
+        return all(all(row) for row in self.board)
 
     def get_box_values(self, n: int):
         box_row: int = n // self.height
@@ -57,7 +57,22 @@ class Sudoku:
 
         return (rows | cols | box) - {(row, col)}
 
+
     def solve(self):
+        while not self.is_solved():
+            possibility_counts = self.possibility_counts()
+            p = min(filter(lambda p: p > 0 and possibility_counts[p] > 0, possibility_counts.keys()))
+            try:
+                getattr(self, f"solve_p{p}")()
+            except AttributeError:
+                print("err")
+                raise RuntimeError(f"No fuction to solve for p={p}")
+            
+    
+    def solve_p1(self) -> None:
+        """
+        Solves the board for all immedietly obvious solutions (only one possibility)
+        """
         # fmt: off
         
         has_changed: bool = True  # keeps track if the last iteration over possible values resulted in any changes to the board
@@ -67,7 +82,7 @@ class Sudoku:
             # `possible` reprensts all obviously possible
             # values for each square (eg. [0, 1, 1, 0, 0, 0, 0, 0, 0] 
             # means that only numbers "2" and "3" are possible at this spot due
-            # immedietly available conflicts (row, col, box)
+            # immedietly available conflicts (row, col, box))
             possible_key = self.create_possible()
             
             # find any spots in possible where only possible option
@@ -82,22 +97,25 @@ class Sudoku:
                     possible_key[row, col] = np.zeros((9,))
                     self.board[row, col] = value
                     has_changed = True
-                
-            print(self)        
-        print("done with immedietly apparent fills")
-        print("[n possible digits: n squares with respective count]")
-        final_possible = self.create_possible()
+        # fmt: on
+    
+    
+    def possibility_counts(self):
+        """
+        Gets a count of how many squares have each possibility count [0-9]
+        """
+        possible_key = self.create_possible()
         count = {}
         for row, col in product(range(self.height), range(self.width)):
-            possible = final_possible[row, col]
+            possible = possible_key[row, col]
             n_possible = int(sum(possible))
             if n_possible in count:
                 count[n_possible] += 1
             else:
                 count[n_possible] = 1
+        return count
+    
         
-        for n, b in count.items():
-            print(f"{str(n).rjust(6) if n != 0 else 'filled'}: {b}")
     
             
     def create_possible(self):
@@ -158,11 +176,9 @@ class Sudoku:
     
                     
 suds = Sudoku(medium_1)
-print(suds.interacting_indicies(4, 5))
 print(suds)
 suds.solve()
 print(suds)
-
 # find 2 boxes with matching pairs of possible values
 # that are intersecting
 # subtract from other intersecting boxes in the same intersection context (row, col, box)
