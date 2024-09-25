@@ -1,5 +1,6 @@
 import numpy as np
-from itertools import product
+from itertools import product  # itertools.product my beloved
+from pprint import pprint
 
 
 class Sudoku:
@@ -46,6 +47,65 @@ class Sudoku:
 
         return (rows | cols | box) - {(row, col)}
 
+    def solve(self):
+        # fmt: off
+        
+        has_changed: bool = True  # keeps track if the last iteration over possible values resulted in any changes to the board
+        
+        while has_changed: 
+            has_changed = False
+            # `possible` reprensts all obviously possible
+            # values for each square (eg. [0, 1, 1, 0, 0, 0, 0, 0, 0] 
+            # means that only numbers "2" and "3" are possible at this spot due
+            # immedietly available conflicts (row, col, box)
+            possible_key = self.create_possible()
+            
+            # find any spots in possible where only possible option
+            
+            for row, col in product(range(self.height), range(self.width)):
+                
+                # get current known possible values
+                possible = possible_key[row, col]
+                
+                if sum(possible) == 1: # only one possible value (True=1, False=0)
+                    value = np.where(possible == True)[0][0] + 1  # index + 1
+                    possible_key[row, col] = np.zeros((9,))
+                    self.board[row, col] = value
+                    has_changed = True
+        
+        print("done with immedietly apparent fills")
+        print("[n possible digits: n squares with respective count]")
+        final_possible = self.create_possible()
+        count = {}
+        for row, col in product(range(self.height), range(self.width)):
+            possible = final_possible[row, col]
+            n_possible = int(sum(possible))
+            if n_possible in count:
+                count[n_possible] += 1
+            else:
+                count[n_possible] = 1
+        
+        for n, b in count.items():
+            print(f"{str(n).rjust(6) if n != 0 else 'filled'}: {b}")
+    
+            
+    def create_possible(self):
+        # fmt: off
+        possible = np.ones((self.height, self.width, 9))
+        given = self.board != 0
+        possible[given] = np.zeros((9,))  # any existing spots are set to all false possibles
+        
+        for row, col in product(range(self.height), range(self.width)):
+            if given[row, col]:
+                value = self.board[row, col]
+                inter = self.interacting_indicies(row, col)
+                for i, j in inter:
+                    possible[i, j, value-1] = False
+        
+        return possible
+        # fmt: on
+    
+
     @property
     def height(self):
         return len(self.board)
@@ -64,24 +124,28 @@ class Sudoku:
 
     def __getitem__(self, i: int):
         return self.board.__getitem__(i)
+    
+    def __repr__(self):
+        string = ""
+        top = "┌─────────┬─────────┬─────────┐"
+        mid = "├─────────┼─────────┼─────────┤"
+        bot = "└─────────┴─────────┴─────────┘"
+        
+        string += top + "\n"
+        for i, row in enumerate(self.board):
+            string += "│"
+            for j, val in enumerate(row):
+                string += f" {val if val != 0 else ' '} "
+                if j % 3 == 2 and j != 8:
+                    string += "│"
+            string += "│\n"
+            if i % 3 == 2 and i != 8:
+                string += mid + "\n"
+        string += bot
+        return string
 
-
-def solve(puzzle: Sudoku):
-    possible = np.ones((puzzle.height, puzzle.width, 9))
-    possible[
-        puzzle.board[
-            :,
-            :,
-        ]
-        != 0
-    ] = np.zeros(
-        (9,)
-    )  # any existing spots are set to all false possibles
-
-    symbols = list(range(1, 10))
-    print(puzzle.interacting_indicies(3, 3))
-
-
+    
+                    
 suds = Sudoku(
     [
         [3, 0, 0, 2, 0, 1, 0, 0, 0],
@@ -95,5 +159,6 @@ suds = Sudoku(
         [0, 0, 0, 9, 0, 3, 0, 0, 2],
     ]
 )
-print(suds.board)
-solve(suds)
+print(suds)
+suds.solve()
+print(suds)
