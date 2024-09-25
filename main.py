@@ -1,7 +1,6 @@
 import numpy as np
 from itertools import product  # itertools.product my beloved
-from pprint import pprint
-
+from puzzles import *
 
 class Sudoku:
     def __init__(self, board: list[list[int]] | np.ndarray):
@@ -41,8 +40,19 @@ class Sudoku:
         Returns a list of all possible indicies of the board which may conflict with the given index (all other
         indices in the row, column, and box)
         """
+        # (4, 5)
+        #, (4, x)
+        # (4, 0)
+        # (4, 1)
+        #, (4, ...) -> (4, 8)
         rows = {(row, col_t) for col_t in range(0, self.width)}
+        
+        # (4, 5)
+        # (0, 5)
+        # (1, 5)
+        # (... 5) -> (8, 5)
         cols = {(row_t, col) for row_t in range(0, self.height)}
+        
         box = self.box_group(row, col)
 
         return (rows | cols | box) - {(row, col)}
@@ -72,7 +82,8 @@ class Sudoku:
                     possible_key[row, col] = np.zeros((9,))
                     self.board[row, col] = value
                     has_changed = True
-        
+                
+            print(self)        
         print("done with immedietly apparent fills")
         print("[n possible digits: n squares with respective count]")
         final_possible = self.create_possible()
@@ -146,19 +157,15 @@ class Sudoku:
 
     
                     
-suds = Sudoku(
-    [
-        [3, 0, 0, 2, 0, 1, 0, 0, 0],
-        [7, 4, 0, 0, 0, 0, 0, 1, 9],
-        [0, 2, 0, 0, 6, 0, 5, 0, 0],
-        [0, 3, 0, 7, 4, 0, 0, 0, 1],
-        [0, 0, 8, 0, 0, 0, 9, 0, 0],
-        [6, 0, 0, 0, 9, 2, 0, 5, 0],
-        [0, 0, 2, 0, 8, 0, 0, 4, 0],
-        [1, 5, 0, 0, 0, 0, 0, 9, 7],
-        [0, 0, 0, 9, 0, 3, 0, 0, 2],
-    ]
-)
+suds = Sudoku(medium_1)
+print(suds.interacting_indicies(4, 5))
 print(suds)
 suds.solve()
 print(suds)
+
+# find 2 boxes with matching pairs of possible values
+# that are intersecting
+# subtract from other intersecting boxes in the same intersection context (row, col, box)
+
+# then, extend to 3 with matching triplets of possible values
+# ...
