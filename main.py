@@ -4,6 +4,7 @@ import numpy as np
 import numpy.typing as npt
 from itertools import product  # itertools.product my beloved
 from puzzles import *
+from copy import deepcopy
 
 class Sudoku:
     def __init__(self, board: list[list[int]] | npt.NDArray[np.int8]) -> None:
@@ -79,22 +80,34 @@ class Sudoku:
 
         return (rows | cols | box) - {(row, col)}
 
-
-    def solve(self):        
-        # replace all singles
-        possible = self.create_possible()
-        self.replace_singles(possible)
+    def solve(self):
+        self.singles_solve()  # solves using singles until no change can be made
+        self.doubles_pass() # solves using doubles
+        self.singles_solve()
         
-        possible = self.resolve_pairs(self.create_possible())
+    def singles_pass(self, possible: npt.NDArray[np.int8] | None = None):        
+        if possible is None:
+            possible = self.create_possible()
         self.replace_singles(possible)
     
+    def singles_solve(self):
+        while not self.is_solved():
+            old = deepcopy(self.board)
+            self.singles_pass()
+            if np.all(old == self.board):
+                return
+    
+    def doubles_pass(self):
+        possible = self.resolve_pairs(self.create_possible())
+        self.replace_singles(possible)
+          
     def replace_singles(self, possible: np.ndarray) -> None:
         """
         Replaces all apparent values in .board using the possibility map given. Only does one pass
         """
         for row, col in product(range(self.height), range(self.width)):
             pk = possible[row, col]
-            if sum(pk == 1):
+            if sum(pk) == 1:
                 value = np.where(pk == 1)[0][0] + 1  # index + 1
                 possible[row, col] = np.zeros((9,))
                 self.board[row, col] = value
@@ -161,7 +174,6 @@ class Sudoku:
     
         
     def create_possible(self) -> np.ndarray:
-        # fmt: off
         possible = np.ones((self.height, self.width, 9))
         given = self.board != 0
         possible[given] = np.zeros((9,))  # any existing spots are set to all false possibles
@@ -169,13 +181,13 @@ class Sudoku:
         for row, col in product(range(self.height), range(self.width)):
             if given[row, col]:
                 value = self.board[row, col]
+                
                 inter = self.get_interacting_indicies(row, col)
                 for i, j in inter:
                     possible[i, j, value-1] = False
-        
+                
         return possible
-        # fmt: on
-    
+        
     
     def get_interaction_context(self, a: tuple[int, int], b: tuple[int, int]) -> Generator["InteractionContext", None, None]:
         if a[0] == b[0]:
@@ -229,8 +241,10 @@ class InteractionContext(Enum):
     COL = 1
     BOX = 2
 
-sudoku = Sudoku(medium_1) 
+sudoku = Sudoku(easy_1) 
+print(sudoku)
 sudoku.solve()
+print(sudoku)
 # find 2 boxes with matching pairs of possible values
 # that are intersecting
 # subtract from other intersecting boxes in the same intersection context (row, col, box)
