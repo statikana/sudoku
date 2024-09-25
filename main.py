@@ -1,17 +1,26 @@
+from enum import Enum
+from typing import Generator
 import numpy as np
+import numpy.typing as npt
 from itertools import product  # itertools.product my beloved
 from puzzles import *
 
 class Sudoku:
-    def __init__(self, board: list[list[int]] | np.ndarray):
+    def __init__(self, board: list[list[int]] | npt.NDArray[np.int8]) -> None:
         self.board: np.ndarray = np.array(board)
         self.box_height: int = 3
         self.box_width: int = 3
 
-    def is_solved(self):
+    def is_solved(self) -> bool:
+        """
+        Whether or not all spots in the board have an answer placed
+        """
         return all(all(row) for row in self.board)
 
-    def get_box_values(self, n: int):
+    def get_box_values(self, n: int) -> npt.NDArray[np.int8]:
+        """
+        Gets all values in the given box number [0-8]
+        """
         box_row: int = n // self.height
         box_col: int = n % self.width
         return self.board[
@@ -19,7 +28,10 @@ class Sudoku:
             box_col * self.box_width : box_col * self.box_width + self.box_width,
         ]
 
-    def box_group(self, row: int, col: int):
+    def box_group(self, row: int, col: int) -> set[tuple[int, int]]:
+        """
+        Gets all values in the same box as the given row and column
+        """
         box_row: int = row // (self.height // self.box_height)
         box_col: int = col // (self.width // self.box_width)
 
@@ -34,8 +46,18 @@ class Sudoku:
                 ),
             )
         )
+    
+    def box_n(self, row: int, col: int) -> int:
+        """
+        Gets the box number of the given row and column
+        """
+        box_row: int = row // (self.height // self.box_height)
+        box_col: int = col // (self.width // self.box_width)
+        
+        return box_row * self.box_height + box_col
 
-    def interacting_indicies(self, row: int, col: int):
+
+    def get_interacting_indicies(self, row: int, col: int):
         """
         Returns a list of all possible indicies of the board which may conflict with the given index (all other
         indices in the row, column, and box)
@@ -58,49 +80,71 @@ class Sudoku:
         return (rows | cols | box) - {(row, col)}
 
 
-    def solve(self):
-        while not self.is_solved():
-            possibility_counts = self.possibility_counts()
-            p = min(filter(lambda p: p > 0 and possibility_counts[p] > 0, possibility_counts.keys()))
-            try:
-                getattr(self, f"solve_p{p}")()
-            except AttributeError:
-                print("err")
-                raise RuntimeError(f"No fuction to solve for p={p}")
-            
-    
-    def solve_p1(self) -> None:
-        """
-        Solves the board for all immedietly obvious solutions (only one possibility)
-        """
-        # fmt: off
+    def solve(self):        
+        # replace all singles
+        possible = self.create_possible()
+        self.replace_singles(possible)
         
-        has_changed: bool = True  # keeps track if the last iteration over possible values resulted in any changes to the board
+        possible = self.resolve_pairs(self.create_possible())
+        self.replace_singles(possible)
+    
+    def replace_singles(self, possible: np.ndarray) -> None:
+        """
+        Replaces all apparent values in .board using the possibility map given. Only does one pass
+        """
+        for row, col in product(range(self.height), range(self.width)):
+            pk = possible[row, col]
+            if sum(pk == 1):
+                value = np.where(pk == 1)[0][0] + 1  # index + 1
+                possible[row, col] = np.zeros((9,))
+                self.board[row, col] = value
+            
         
-        while has_changed: 
-            has_changed = False
-            # `possible` reprensts all obviously possible
-            # values for each square (eg. [0, 1, 1, 0, 0, 0, 0, 0, 0] 
-            # means that only numbers "2" and "3" are possible at this spot due
-            # immedietly available conflicts (row, col, box))
-            possible_key = self.create_possible()
+    def least_unresolved(self) -> int:
+        """
+        The smallest number of possibilities in any square, not including zero (solved)
+        """
+        possibility_counts = self.possibility_counts()
+        return min(filter(lambda p: p > 0 and possibility_counts[p] > 0, possibility_counts.keys()))
+        
+    def resolve_pairs(self, possible: npt.NDArray):
             
-            # find any spots in possible where only possible option
+        has_two_boolmap: npt.NDArray = sum(possible) == 2  # 9x9 array # type: ignore
+        for row, col in product(range(self.height), range(self.width)):
+            if not has_two_boolmap[row, col]:
+                continue
             
-            for row, col in product(range(self.height), range(self.width)):
-                
-                # get current known possible values
-                possible = possible_key[row, col]
-                
-                if sum(possible) == 1: # only one possible value (True=1, False=0)
-                    value = np.where(possible == True)[0][0] + 1  # index + 1
-                    possible_key[row, col] = np.zeros((9,))
-                    self.board[row, col] = value
-                    has_changed = True
-        # fmt: on
+            interacting = self.get_interacting_indicies(row, col)  # all ones in the same row, col, or box
+            for irow, icol in interacting:
+                if all(possible[irow, icol] == possible[row, col]):  # has the same two possibilities
+                    contexts = list(self.get_interaction_context((row, col), (irow, icol)))
+                    for context in contexts:
+                        match context:
+                            case InteractionContext.ROW:
+                                indicies = set(product([row] * 9, range(9)))
+                                
+                            case InteractionContext.COL:
+                                indicies = set(product(range(9), [col] * 9))
+                                
+                            case InteractionContext.BOX:
+                                base_row, base_col = row - row%3, col - col%3  # top left of block
+                                indicies = set(product(range(base_row, base_row+3), range(base_col, base_col+3)))
+                        
+                        indicies -= {(row, col), (irow, icol)}
+                        known_map = possible[row, col]
+                        for i, j in indicies:
+                            possible[i, j] = (possible[i, j].astype(bool) | known_map.astype(bool)) & ~(possible[i, j].astype(bool) & known_map.astype(bool))
+        return possible
+    
+    def get_row(self, row_n: int):
+        return self.board[row_n]
+    
+    def get_col(self, col_n: int):
+        return self.board[:, col_n]
+                        
     
     
-    def possibility_counts(self):
+    def possibility_counts(self) -> dict[int, int]:
         """
         Gets a count of how many squares have each possibility count [0-9]
         """
@@ -116,9 +160,7 @@ class Sudoku:
         return count
     
         
-    
-            
-    def create_possible(self):
+    def create_possible(self) -> np.ndarray:
         # fmt: off
         possible = np.ones((self.height, self.width, 9))
         given = self.board != 0
@@ -127,12 +169,21 @@ class Sudoku:
         for row, col in product(range(self.height), range(self.width)):
             if given[row, col]:
                 value = self.board[row, col]
-                inter = self.interacting_indicies(row, col)
+                inter = self.get_interacting_indicies(row, col)
                 for i, j in inter:
                     possible[i, j, value-1] = False
         
         return possible
         # fmt: on
+    
+    
+    def get_interaction_context(self, a: tuple[int, int], b: tuple[int, int]) -> Generator["InteractionContext", None, None]:
+        if a[0] == b[0]:
+            yield InteractionContext.ROW
+        if a[1] == b[1]:
+            yield InteractionContext.COL
+        if self.box_n(*a) == self.box_n(*b):
+            yield InteractionContext.BOX
     
 
     @property
@@ -145,8 +196,7 @@ class Sudoku:
 
     @classmethod
     def random(cls, height: int = 9, width: int = 9) -> "Sudoku":
-        board = np.random.randint(1, 10, (height, width))
-        return cls(board)
+        return cls(np.random.randint(1, 10, (height, width)))
 
     def __iter__(self):
         return iter(self.board)
@@ -173,12 +223,14 @@ class Sudoku:
         string += bot
         return string
 
-    
-                    
-suds = Sudoku(medium_1)
-print(suds)
-suds.solve()
-print(suds)
+
+class InteractionContext(Enum):
+    ROW = 0
+    COL = 1
+    BOX = 2
+
+sudoku = Sudoku(medium_1) 
+sudoku.solve()
 # find 2 boxes with matching pairs of possible values
 # that are intersecting
 # subtract from other intersecting boxes in the same intersection context (row, col, box)
